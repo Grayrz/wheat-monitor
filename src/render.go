@@ -139,7 +139,7 @@ func buildSeries(rows []Row, cfg *Config) map[string]*Series {
 
 func buildTable(series map[string]*Series, cfg *Config) string {
 	var sb strings.Builder
-	today := time.Now()
+	today := nowCST()
 	for _, s := range cfg.Sources {
 		v := series[s.Key]
 		if v == nil || len(v.Dates) == 0 {
@@ -322,7 +322,7 @@ func buildDashboard(cfg *Config) error {
 		"durum":      durum,
 		"d0":         d0,
 		"d1":         d1,
-		"built":      time.Now().Format("2006-01-02 15:04"),
+		"built":      nowCST().Format("2006-01-02 15:04"),
 		"cur":        map[string]string{"USD": "$", "EUR": "€", "TRY": "₺"},
 		"shotLabels": shotLabels,
 		"meta":       meta,
