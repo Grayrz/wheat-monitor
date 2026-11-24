@@ -23,12 +23,16 @@ import smtplib
 import ssl
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.path.join(ROOT, "data", "prices.csv")
+
+# 一律按东八区算日期。GitHub 的 runner 是 UTC，
+# 北京 0:00-8:00 之间用本地日期会写成前一天。
+CST = timezone(timedelta(hours=8))
 
 # 展示顺序：软麦在前，杜兰在后，与看板一致
 ORDER = [
@@ -133,6 +137,10 @@ def pct_color(p):
     return "#c62828" if p > 0 else ("#2e7d32" if p < 0 else "#8a93a0")
 
 
+def weekday_cn(d):
+    return "周" + "一二三四五六日"[d.weekday()]
+
+
 def lag_days(d, today):
     try:
         return (today - datetime.strptime(d, "%Y-%m-%d").date()).days
@@ -143,7 +151,7 @@ def lag_days(d, today):
 def build_text(view, site_url, today):
     """纯文本兜底版。中文宽度是英文两倍，用空格对齐必定错行，
     所以改成单行一条的列表式，怎么显示都不歪。"""
-    lines = [f"小麦价格周报 · {today.isoformat()}（周一）", ""]
+    lines = [f"小麦价格周报 · {today.isoformat()}（{weekday_cn(today)}）", ""]
     for v in view:
         if v["status"] == "need_review":
             lines.append(f"· {v['name']}：需人工核对（见当日截图存档）")
@@ -211,7 +219,7 @@ def build_html(view, site_url, today, warn=""):
 
   <div style="font-size:12px;letter-spacing:.08em;color:#8a93a0;text-transform:uppercase;">Wheat Monitor</div>
   <h1 style="margin:6px 0 4px;font-size:21px;font-weight:600;letter-spacing:-.01em;">小麦价格周报</h1>
-  <div style="font-size:13px;color:#5d6675;">{today.isoformat()}（周一）　·　{summary}</div>
+  <div style="font-size:13px;color:#5d6675;">{today.isoformat()}（{weekday_cn(today)}）　·　{summary}</div>
   {warn_html}
 
   <div style="background:#fff;border:1px solid #e6eaf0;border-radius:10px;margin-top:16px;overflow:hidden;">
@@ -271,7 +279,8 @@ def send(subject, text, html_body, cfg):
 
 
 def main():
-    today = date.today()
+    now = datetime.now(CST)
+    today = now.date()
     rows = read_rows(CSV_PATH)
     view = build_view(rows)
     if not view:
