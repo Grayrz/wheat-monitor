@@ -73,7 +73,7 @@ func pf(a ...interface{}) {
 }
 
 func logf(format string, a ...interface{}) {
-	line := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), fmt.Sprintf(format, a...))
+	line := fmt.Sprintf("[%s] %s", nowCST().Format("15:04:05"), fmt.Sprintf(format, a...))
 	logMu.Lock()
 	p(line)
 	logBuf = append(logBuf, line)
@@ -81,7 +81,7 @@ func logf(format string, a ...interface{}) {
 }
 
 func saveLog() {
-	p := filepath.Join(dataDir, "run_"+time.Now().Format("2006-01-02")+".log")
+	p := filepath.Join(dataDir, "run_"+nowCST().Format("2006-01-02")+".log")
 	os.WriteFile(p, append([]byte{0xEF, 0xBB, 0xBF}, []byte(strings.Join(logBuf, "\r\n"))...), 0644)
 }
 
@@ -192,3 +192,10 @@ func openLocal(p string) {
 		exec.Command("xdg-open", p).Start()
 	}
 }
+
+// 时间一律按东八区算。
+// CI 跑在 UTC 机器上，北京时间 0:00-8:00 之间 time.Now() 会算成前一天，
+// 快照目录名、CSV 的 date、看板"生成于"全会差一天。
+var cst = time.FixedZone("CST", 8*3600)
+
+func nowCST() time.Time { return time.Now().In(cst) }
