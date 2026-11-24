@@ -56,10 +56,12 @@ jobs:
           git push
 
       # Pages 只发布站点需要的文件，源码和缓存不对外
+      # 注意：根路径必须有 index.html，否则 https://<user>.github.io/<repo>/ 会 404
       - name: 组装站点目录
         run: |
           mkdir -p public
           cp dashboard.html public/
+          cp dashboard.html public/index.html
           cp -r assets public/
           [ -d snapshots ] && cp -r snapshots public/ || true
 
