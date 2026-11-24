@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小麦价格监控看板</title>
+<script src="assets/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e6e8ec; --ink:#1a1d23; --sub:#6b7280;
+    --up:#d92b2b; --down:#0f9d58; --brand:#1f4e79; --accent:#c8a45c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13px}
+  .wrap{max-width:1320px;margin:0 auto;padding:24px 20px 60px}
+  header{display:flex;justify-content:space-between;align-items:flex-end;
+          border-bottom:2px solid var(--brand);padding-bottom:12px;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+  h1{margin:0;font-size:22px;letter-spacing:.5px}
+  h1 small{display:block;font-size:12px;color:var(--sub);font-weight:400;margin-top:4px;letter-spacing:0}
+  .stamp{font-size:12px;color:var(--sub);text-align:right;line-height:1.7}
+  .grid{display:grid;gap:14px}
+  .kpi{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kpi .card{border-left:3px solid var(--brand)}
+  .kpi .lbl{font-size:11px;color:var(--sub);letter-spacing:.3px}
+  .kpi .val{font-size:24px;font-weight:600;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+  .kpi .val span{font-size:12px;color:var(--sub);font-weight:400;margin-left:3px}
+  .kpi .chg{font-size:12px}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .chartcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px 6px;margin-bottom:14px}
+  .charthead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px}
+  .charthead h2{margin:0;font-size:15px;font-weight:600}
+  .charthead .tag{font-size:11px;color:var(--sub);background:#f1f3f6;padding:2px 8px;border-radius:20px}
+  .btns{display:flex;gap:6px}
+  .btns button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 10px;
+                font-size:12px;cursor:pointer;color:var(--sub);transition:.15s}
+  .btns button:hover{border-color:var(--brand);color:var(--brand)}
+  .btns button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .chart{width:100%;height:340px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+  th{text-align:left;color:var(--sub);font-weight:500;border-bottom:1px solid var(--line);
+     padding:8px 6px;font-size:11.5px;white-space:nowrap;vertical-align:bottom}
+  td{border-bottom:1px solid #f0f2f5;padding:9px 6px}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  th .u{font-size:10px;font-weight:400;display:block;color:#9aa1ab;margin-top:2px}
+  td.muted{color:var(--sub);font-size:12px}
+  .unit{font-size:10.5px;color:var(--sub);margin-left:4px}
+  .pill{display:inline-block;white-space:nowrap;font-size:10px;padding:1px 6px;border-radius:20px;
+         background:#fdf3dc;color:#8a6d3b;border:1px solid #f0e0b8;vertical-align:middle}
+  .pill.gray{background:#f1f3f6;color:#6b7280;border-color:#e6e8ec}
+  .fresh{color:#0f9d58} .mild{color:#b8860b} .stale{color:#b5462f}
+  .lag{display:block;font-size:10px;color:#9aa1ab;margin-top:1px;font-variant-numeric:tabular-nums}
+  .mild+.lag{color:#c39b45} .stale+.lag{color:#c07a6b}
+  .nowrap{white-space:nowrap}
+  .future{color:#b8860b;font-size:11.5px}
+  tr.empty td{color:#9aa1ab;font-style:italic}
+  .shotgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .shot{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fafbfc;cursor:pointer;position:relative}
+  .shot img{width:100%;height:140px;object-fit:cover;object-position:top;display:block}
+  .shot .cap{font-size:11px;padding:6px 8px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .shot:hover{border-color:var(--brand)}
+  .shot.file{display:block;text-decoration:none}
+  .shot .ph{height:140px;display:flex;align-items:center;justify-content:center;
+            background:#f4f6f9;color:var(--brand);font-weight:700;letter-spacing:1px;font-size:18px}
+  .dayttl{font-size:13px;font-weight:600;margin:16px 0 8px;color:var(--brand)}
+  .note{font-size:11.5px;color:var(--sub);line-height:1.9;margin-top:8px}
+  .note b{color:var(--ink)}
+  #lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:99;
+       align-items:center;justify-content:center;padding:24px}
+  #lb img{max-width:100%;max-height:100%;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+  #lb .x{position:absolute;top:14px;right:22px;color:#fff;font-size:30px;cursor:pointer;line-height:1}
+
+  /* ---------- 打印 ---------- */
+  @page{ size:A4 landscape; margin:6mm; }
+  @media print{
+    html,body{background:#fff}
+    body{font-size:11.5px}
+    .wrap{max-width:none;padding:0}
+    header{margin-bottom:8px;padding-bottom:6px}
+    h1{font-size:19px}
+    h1 small{font-size:11px}
+    .kpi{grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px;margin-bottom:9px}
+    .kpi .val{font-size:21px}
+    .card,.chartcard{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px}
+    .chartcard{padding:10px 14px 2px}
+    .btns{display:none}                      /* 按钮在纸上没有意义 */
+    /* 打印走的是文档快照，脚本里 resize() 常常来不及生效（实测被丢弃）。
+       这里用 zoom 把整版按纸宽等比缩放：画布、表格、卡片一起缩，
+       既不会右切边，也不会像 width:100% 那样把画布压扁。 */
+    body{zoom:.78}
+    .chart{height:340px}
+    table{font-size:10.5px}
+    th,td{padding:5px 5px}
+    tr{break-inside:avoid}
+    .note{font-size:10px;line-height:1.75}
+    .shotgrid{grid-template-columns:repeat(5,1fr);gap:8px}
+    .shot img{height:92px}
+    .shot .ph{height:92px;font-size:15px}
+    .dayttl{margin:10px 0 6px}
+    a{color:inherit;text-decoration:none}
+    #lb{display:none!important}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>小麦价格监控看板
+      <small>美国 · 欧洲 · 土耳其 ｜ 软麦 &amp; 杜兰麦 ｜ 统一折算 USD/吨</small>
+    </h1>
+    <div class="stamp">
+      数据区间 __D0__ → __D1__<br>
+      共 __TOTAL__ 条记录 · __NSHOTS__ 张页面存档<br>
+      生成于 __BUILT__
+    </div>
+  </header>
+
+  <div class="grid kpi" id="kpi"></div>
+
+  <div class="chartcard">
+    <div class="charthead">
+      <h2>软麦走势 <span class="tag">USD/吨 · 期货与 FOB 现货交货条件不同，价差含基差与运费</span></h2>
+      <div class="btns" data-chart="soft">
+        <button data-r="30">30天</button><button data-r="90">90天</button>
+        <button data-r="365" class="on">1年</button><button data-r="0">全部</button>
+      </div>
+    </div>
+    <div class="chart" id="c_soft"></div>
+  </div>
+
+  <div class="chartcard">
+    <div class="charthead">
+      <h2>杜兰麦走势 <span class="tag">USD/吨</span></h2>
+      <div class="btns" data-chart="durum">
+        <button data-r="30">30天</button><button data-r="90">90天</button>
+        <button data-r="365" class="on">1年</button><button data-r="0">全部</button>
+      </div>
+    </div>
+    <div class="chart" id="c_durum"></div>
+  </div>
+
+  <div class="chartcard">
+    <div class="charthead">
+      <h2>现货基差 <span class="tag">FOB 现货 − CBOT 期货 · USD/吨</span></h2>
+      <div class="btns" data-chart="basis">
+        <button data-r="30">30天</button><button data-r="90">90天</button>
+        <button data-r="365" class="on">1年</button><button data-r="0">全部</button>
+      </div>
+    </div>
+    <div class="chart" id="c_basis"></div>
+    <div class="note" style="margin:2px 4px 10px">
+      基差走强（线往上）＝现货比盘面抗跌，出口需求还在；基差走弱＝盘面强于现货，多为资金推动。
+      这张图才是判断"现在该不该买"的关键，上面两张只说明"贵不贵"。
+    </div>
+  </div>
+
+  <div class="chartcard">
+    <div class="charthead">
+      <h2>杜兰 / 软麦 比价 <span class="tag">博洛尼亚同市场现货 · 杜兰价 ÷ 软麦价 · 倍</span></h2>
+      <div class="btns" data-chart="ratio">
+        <button data-r="30">30天</button><button data-r="90">90天</button>
+        <button data-r="365" class="on">1年</button><button data-r="0">全部</button>
+      </div>
+    </div>
+    <div class="chart" id="c_ratio"></div>
+    <div class="note" style="margin:2px 4px 10px">
+      <b>怎么读：</b>同一个市场、同一币种相除，汇率和单位的影响自动消掉，剩下的纯粹是"杜兰比软麦贵多少"。
+      1.10 = 杜兰只贵 10%；2.00 = 贵一倍。
+      <br><b>为什么关键：</b>意大利面粉厂在两季之间可以互相替代——杜兰贵到一定程度，掺软麦（部分意面配方允许，需调整工艺与标签）
+      就变得划算，替代需求会把杜兰压下来；反过来杜兰便宜时掺软麦省不出钱，杜兰需求刚性，跌幅往往已经充分。
+      <br><b>三条参考线按 2013 年至今全样本分位实时计算（括号内为当前数值），不是拍脑袋定的：</b>
+      <b style="color:#b5462f">P90（≈1.65）以上＝替代压力区</b>，杜兰相对软麦处于历史高位，回落风险大；
+      <b style="color:#9aa1ab">P50（≈1.32）＝十三年中枢</b>，比值围绕它来回摆；
+      <b style="color:#0f9d58">P10（≈1.12）以下＝杜兰相对便宜区</b>，替代无利可图，多为底部。
+      比值偏离中枢越远，往回归的压力越大。
+      <br><b>注意：</b>意大利官方报送滞后，本图末端只到 2026-05，看的是"结构性位置"，不是当期报价。
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="charthead"><h2>最新报价速览</h2><span class="tag">涨跌对比上一期数据</span></div>
+    <table>
+      <thead><tr>
+        <th style="width:26%">品种 / 来源</th>
+        <th style="width:18%">市场</th>
+        <th class="num" style="width:16%">最新价<span class="u">原单位</span></th>
+        <th class="num" style="width:9%">涨跌<span class="u">原单位</span></th>
+        <th class="num" style="width:8%">幅度<span class="u">%</span></th>
+        <th class="num" style="width:9%">折美元<span class="u">USD/吨</span></th>
+        <th style="width:14%">数据日期</th>
+      </tr></thead>
+      <tbody>
+__TABLE__
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="charthead"><h2>页面存档</h2><span class="tag">每日自动截图，点开看原页面</span></div>
+    <div id="shots"></div>
+    <div class="note">
+      <b>数据说明：</b>CBOT 为美国软红冬麦期货（美分/蒲式耳，折美元/吨）；MATIF 为巴黎制粉小麦期货（欧元/吨）；
+      博洛尼亚为意大利商品交易所一等品现货周报（欧元/吨）；TMO 为土耳其国家粮食局年度政策收购价（里拉/吨）。
+      所有价格按当日汇率折算为 USD/吨 便于横向比较，实际成交以原币种报价为准。
+      <br><b>两个读图陷阱：</b>① CBOT 报的是最近交割月合约，每两三个月换月一次，换月当天曲线会跳一下，
+      那不是涨跌，是不同月份合约的价差（本页 2026-11 已从 12 月合约切到 2027 年 3 月合约）；
+      ② 新港杜兰麦一年只报几次价，图上是几个孤立观测点加虚线连接，不能当连续行情看。
+      <br><b>怎么看图：</b>实线＝当期有效数据；<b>虚线且末端标"止于某日"</b>＝该来源已超过 45 天无新报价，
+      只能当历史参考，不能与当期价格直接比；周频数据会显示圆点，点与点之间的斜线只是连接，不代表逐日变化；
+      TMO 为年度政策价，仅作参考线，不参与趋势判断。
+    </div>
+  </div>
+</div>
+
+<div id="lb"><span class="x">&times;</span><img id="lbimg" src=""></div>
+
+<script>
+const D = __PAYLOAD__;
+const SHOTS = __SHOTS__;
+
+const COLOR = {};
+const PALETTE = ["#1f4e79","#c8a45c","#2e8b57","#b5462f","#6a4c93","#0f7b8a","#8a6d3b"];
+D.soft.concat(D.durum).forEach((k,i)=>{ COLOR[k]=PALETTE[i%PALETTE.length]; });
+
+function fmt(v,d){ return (v==null||isNaN(v))?"—":Number(v).toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:d}); }
+function curSym(c){ return D.cur[c]||""; }
+
+/* ---------- KPI ---------- */
+function kpi(){
+  const box=document.getElementById("kpi");
+  const picks=D.soft.concat(D.durum).filter(k=>D.meta[k].role==="benchmark");
+  const list=(picks.length?picks:D.soft.concat(D.durum)).slice(0,4);
+  box.innerHTML=list.map(k=>{
+    const s=D.series[k]; const i=s.dates.length-1;
+    if(i<0) return "";
+    const v=s.usd[i], p=s.native[i], prev=i>0?s.native[i-1]:null;
+    const chg=(prev!=null)?(p-prev):null, pct=(chg!=null&&prev)?(chg/prev*100):null;
+    const cls=chg>0?"up":(chg<0?"down":"");
+    const sgn=chg>0?"+":"";
+    return `<div class="card">
+      <div class="lbl">${D.meta[k].name}</div>
+      <div class="val">${fmt(v,0)}<span>USD/吨</span></div>
+      <div class="chg">
+        <span class="${cls}">${chg!=null?sgn+fmt(chg,2):"—"} ${D.meta[k].unit}</span>
+        <span class="${cls}">${pct!=null?sgn+pct.toFixed(2)+"%":""}</span>
+      </div>
+      <div class="lbl" style="margin-top:4px">${s.dates[i]} · 原价 ${curSym(D.meta[k].currency)}${fmt(p,2)}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ---------- 图 ---------- */
+const charts={};
+const CENTS_PER_BU = 0.367437;   // 1 美分/蒲 = 0.367437 美元/吨
+
+/* 找出"单周跳上去又跳回来"的孤立报价：前后两期都平稳、只有中间一期偏离，
+   多为节假日报价失真或录入异常。这类点不改数据，但必须让它在图上自曝身份。 */
+function outliersOf(arr, thr){
+  const out=[];
+  for(let i=1;i<arr.length-1;i++){
+    const a=arr[i-1][1], b=arr[i][1], c=arr[i+1][1];
+    if(a==null||b==null||c==null) continue;
+    if(Math.abs(b/a-1)>thr && Math.abs(c/b-1)>thr && Math.abs(c/a-1)<thr*0.5) out.push(arr[i]);
+  }
+  return out;
+}
+
+function shortOf(name){
+  const k=Object.keys(D.meta).find(x=>D.meta[x].name===name);
+  return (k && D.meta[k].short) ? D.meta[k].short : name;
+}
+
+function lastOf(keys){
+  let m="";
+  keys.forEach(k=>(D.series[k]&&D.series[k].dates||[]).forEach(d=>{ if(d>m) m=d; }));
+  return m;
+}
+function daysBetween(a,b){
+  if(!a||!b) return 0;
+  return Math.round((new Date(b)-new Date(a))/86400000);
+}
+
+function makeChart(elId, keys, rangeDays){
+  const el=document.getElementById(elId);
+  if(!charts[elId]) charts[elId]=echarts.init(el);
+  const ch=charts[elId];
+  const last=lastOf(keys);
+  let minD="";
+  if(rangeDays>0 && last){
+    const t=new Date(last); t.setDate(t.getDate()-rangeDays);
+    minD=t.toISOString().slice(0,10);
+  }
+  const series=[]; const markLines=[];
+  keys.forEach(k=>{
+    const s=D.series[k]; const isRef=D.meta[k].role==="policy_floor";
+    const valid=s.dates.filter((d,i)=>s.usd[i]!=null);
+    const lastDate=valid.length?valid[valid.length-1]:"";
+    if(isRef){
+      const i=s.dates.length-1;
+      if(i>=0) markLines.push({
+        yAxis:s.usd[i],
+        lineStyle:{color:COLOR[k],type:"dashed",width:1.4,opacity:.85},
+        label:{formatter:`TMO 政策价 ${Math.round(s.usd[i])}（${s.dates[i].slice(0,7)} 核定）`,
+          position:"insideMiddleTop",fontSize:10,color:COLOR[k],
+          backgroundColor:"rgba(255,255,255,.88)",padding:[2,4],borderRadius:2}});
+      return;
+    }
+    // 超过 45 天没更新的线：改虚线 + 半透明 + 末端标注，避免被当成当期价格读
+    const stale=daysBetween(lastDate,last)>45;
+    // 按实际采样间隔分档：周报要显点；月报甚至更稀的（如法国新港）必须画大点+虚线，
+    // 否则几个孤立观测会被连成"平滑行情"，读出来的趋势是假的。
+    const span=(new Date(s.dates[s.dates.length-1])-new Date(s.dates[0]))/86400000;
+    const gap=span/Math.max(1,s.dates.length-1);
+    const thin = gap > 10;
+    const sparse = gap > 20;
+    const _su=s.usd, _sd=s.dates;
+    series.push({
+      name:D.meta[k].name, type:"line", smooth:false,
+      symbol:"circle", symbolSize:sparse?7:(thin?4:3), showSymbol:(thin||sparse),
+      connectNulls:true,
+      lineStyle:{width:1.8,color:COLOR[k],type:(stale||sparse)?"dashed":"solid",opacity:stale?0.8:1},
+      itemStyle:{color:COLOR[k],opacity:stale?0.8:1},
+      emphasis:{focus:"series"},
+      markPoint:(function(){
+        // 日线连续合约换月时会跳空，属于合约切换而非报价失真，不参与异常判定
+        if(gap<=4) return undefined;
+        const os=outliersOf(s.dates.map((d,i)=>[d,s.usd[i]]).filter(pt=>pt[1]!=null),0.08);
+        if(!os.length) return undefined;
+        return {symbol:"circle",symbolSize:9,silent:true,
+          itemStyle:{color:"#fff",borderColor:"#b5462f",borderWidth:2},
+          label:{show:true,formatter:"单周异常",position:"right",distance:7,
+            fontSize:9,color:"#b5462f",backgroundColor:"rgba(255,255,255,.9)",padding:[1,3]},
+          data:os.map(pt=>({coord:pt}))};
+      })(),
+      endLabel: stale?{show:true,formatter:shortOf(D.meta[k].name)+` 止于 ${lastDate.slice(5)}`,
+        position:"bottom",distance:6,fontSize:10,color:COLOR[k],
+        backgroundColor:"rgba(255,255,255,.88)",padding:[2,4],borderRadius:2}:undefined,
+      data:s.dates.map((d,i)=>[d, s.usd[i]])
+    });
+  });
+  const first=series[0];
+  if(first && markLines.length) first.markLine={symbol:"none",silent:true,data:markLines};
+  const ys=[];
+  series.forEach(sr=>sr.data.forEach(d=>{
+    if(d[1]==null || isNaN(d[1])) return;
+    if(minD && String(d[0]) < minD) return;
+    ys.push(d[1]);
+  }));
+  markLines.forEach(m=>ys.push(m.yAxis));
+  let ymin=null, ymax=null;
+  if(ys.length){ ymin=Math.min.apply(null,ys); ymax=Math.max.apply(null,ys);
+    const span0=(ymax-ymin)||16;
+    ymin=Math.floor(ymin-span0*0.08); ymax=Math.ceil(ymax+span0*0.13); }
+  ch.setOption({
+    grid:{left:56,right:24,top:44,bottom:56},
+    legend:{top:0,left:0,width:"76%",icon:"roundRect",itemWidth:11,itemHeight:7,
+      itemGap:16,textStyle:{fontSize:11,color:"#6b7280"},
+      formatter:shortOf},
+    tooltip:{
+      trigger:"axis", axisPointer:{type:"line",lineStyle:{color:"#c9ced6"}},
+      backgroundColor:"rgba(255,255,255,.97)", borderColor:"#e6e8ec", borderWidth:1,
+      textStyle:{color:"#1a1d23",fontSize:12}, padding:[8,12],
+      formatter:function(ps){
+        if(!ps.length) return "";
+        let h=`<b>${ps[0].axisValue}</b>`;
+        ps.forEach(p=>{
+          if(p.seriesType!=="line") return;
+          const k=Object.keys(D.meta).find(x=>D.meta[x].name===p.seriesName);
+          const ss=k?D.series[k]:null;
+          let native="";
+          if(ss){
+            const idx=ss.dates.indexOf(p.axisValue);
+            if(idx>=0) native=`　<span style="color:#6b7280">${curSym(D.meta[k].currency)}${fmt(ss.native[idx],2)} ${D.meta[k].unit}</span>`;
+          }
+          h+=`<br>${p.marker}${p.seriesName}：<b>${fmt(p.value[1],0)}</b> USD/吨${native}`;
+        });
+        return h;
+      }
+    },
+    xAxis:{type:"time", min:minD||undefined, axisLine:{lineStyle:{color:"#dfe3e8"}},
+      axisLabel:{color:"#9aa1ab",fontSize:11}, splitLine:{show:false}},
+    yAxis:{type:"value",
+      min:ymin, max:ymax, scale:true, axisLabel:{color:"#9aa1ab",fontSize:11},
+      splitLine:{lineStyle:{color:"#f0f2f5"}},
+      axisLine:{show:false}, axisTick:{show:false}},
+    dataZoom:[{type:"inside"},{type:"slider",height:16,bottom:12,
+      borderColor:"transparent",fillerColor:"rgba(31,78,121,.08)",
+      handleStyle:{color:"#1f4e79"},textStyle:{color:"#9aa1ab",fontSize:10}}],
+    series:series
+  }, true);
+  return ch;
+}
+
+/* 基差 = 该 FOB 报价日 - 当日（或最近一个）CBOT 价 */
+function basisData(fobKey, futKey){
+  const fob=D.series[fobKey], fut=D.series[futKey];
+  if(!fob||!fut) return [];
+  const m=new Map();
+  fut.dates.forEach((d,i)=>{ if(fut.usd[i]!=null) m.set(d, fut.usd[i]); });
+  const keys=[...m.keys()].sort();
+  if(!keys.length) return [];
+  const out=[];
+  fob.dates.forEach((d,i)=>{
+    if(fob.usd[i]==null) return;
+    let lo=0, hi=keys.length-1, pick=null;
+    while(lo<=hi){
+      const mid=(lo+hi)>>1;
+      if(keys[mid]<=d){ pick=keys[mid]; lo=mid+1; } else { hi=mid-1; }
+    }
+    if(pick==null) return;
+    out.push([d, +(fob.usd[i]-m.get(pick)).toFixed(2)]);
+  });
+  return out;
+}
+
+function makeBasisChart(rangeDays){
+  const el=document.getElementById("c_basis");
+  if(!charts["c_basis"]) charts["c_basis"]=echarts.init(el);
+  const ch=charts["c_basis"];
+  const defs=[
+    {fob:"us_gulf_srw",   fut:"cbot_srw", name:"美湾 SRW − CBOT", color:"#b5462f"},
+    {fob:"eu_rouen_soft", fut:"cbot_srw", name:"鲁昂软麦 − CBOT", color:"#c8a45c"}
+  ];
+  let last="";
+  defs.forEach(d=>{ d.arr=basisData(d.fob,d.fut);
+    if(d.arr.length){ const t=d.arr[d.arr.length-1][0]; if(t>last) last=t; } });
+  let minD="";
+  if(rangeDays>0 && last){
+    const t=new Date(last); t.setDate(t.getDate()-rangeDays);
+    minD=t.toISOString().slice(0,10);
+  }
+  const series=[];
+  defs.forEach(d=>{
+    if(!d.arr.length) return;
+    series.push({
+      name:d.name, type:"line", showSymbol:true, symbolSize:4, connectNulls:true,
+      lineStyle:{width:1.9,color:d.color}, itemStyle:{color:d.color},
+      emphasis:{focus:"series"}, data:d.arr
+    });
+  });
+  const vals=[];
+  series.forEach(sr=>sr.data.forEach(pt=>{ if(!minD||pt[0]>=minD) vals.push(pt[1]); }));
+  let ymin=null, ymax=null;
+  if(vals.length){
+    ymin=Math.min.apply(null,vals); ymax=Math.max.apply(null,vals);
+    const pad=(ymax-ymin)*0.18||5; ymin=Math.floor(ymin-pad); ymax=Math.ceil(ymax+pad);
+  }
+  if(series.length){
+    series[0].markLine={symbol:"none",silent:true,
+      data:[{yAxis:0,lineStyle:{color:"#c9ced6",type:"solid",width:1},
+        label:{formatter:"基差 0",position:"insideStartTop",fontSize:10,color:"#9aa1ab"}}]};
+  }
+  ch.setOption({
+    grid:{left:56,right:24,top:42,bottom:52},
+    legend:{top:0,left:0,width:"76%",icon:"roundRect",itemWidth:11,itemHeight:7,
+      itemGap:16,textStyle:{fontSize:11,color:"#6b7280"}},
+    tooltip:{
+      trigger:"axis", axisPointer:{type:"line",lineStyle:{color:"#c9ced6"}},
+      backgroundColor:"rgba(255,255,255,.97)", borderColor:"#e6e8ec", borderWidth:1,
+      textStyle:{color:"#1a1d23",fontSize:12}, padding:[8,12],
+      formatter:function(ps){
+        if(!ps.length) return "";
+        let h=`<b>${ps[0].axisValue}</b>`;
+        ps.forEach(p=>{
+          if(p.seriesType!=="line" || p.value[1]==null) return;
+          const cents=(p.value[1]/CENTS_PER_BU).toFixed(0);
+          h+=`<br>${p.marker}${p.seriesName}：<b>${fmt(p.value[1],1)}</b> USD/吨`
+            +`　<span style="color:#6b7280">${cents} 美分/蒲</span>`;
+        });
+        return h;
+      }
+    },
+    xAxis:{type:"time", min:minD||undefined, axisLine:{lineStyle:{color:"#dfe3e8"}},
+      axisLabel:{color:"#9aa1ab",fontSize:11}, splitLine:{show:false}},
+    yAxis:{type:"value",
+      min:ymin, max:ymax, scale:true, axisLabel:{color:"#9aa1ab",fontSize:11},
+      splitLine:{lineStyle:{color:"#f0f2f5"}},
+      axisLine:{show:false}, axisTick:{show:false}},
+    dataZoom:[{type:"inside"},{type:"slider",height:16,bottom:12,
+      borderColor:"transparent",fillerColor:"rgba(31,78,121,.08)",
+      handleStyle:{color:"#1f4e79"},textStyle:{color:"#9aa1ab",fontSize:10}}],
+    series:series
+  }, true);
+  return ch;
+}
+
+/* 比价：同市场两种现货价相除，用原币（EUR）算，规避汇率折算误差 */
+function ratioData(numKey, denKey){
+  const a=D.series[numKey], b=D.series[denKey];
+  if(!a||!b) return [];
+  const m=new Map();
+  b.dates.forEach((d,i)=>{ if(b.native[i]!=null) m.set(d, b.native[i]); });
+  const out=[];
+  a.dates.forEach((d,i)=>{
+    if(a.native[i]==null) return;
+    const v=m.get(d);
+    if(v==null||v===0) return;
+    out.push([d, +(a.native[i]/v).toFixed(4)]);
+  });
+  return out.sort((x,y)=>(x[0]<y[0]?-1:(x[0]>y[0]?1:0)));
+}
+function quantile(arr,p){
+  if(!arr.length) return null;
+  const a=arr.slice().sort((x,y)=>x-y);
+  const i=(a.length-1)*p, lo=Math.floor(i), hi=Math.min(lo+1,a.length-1);
+  return a[lo]+(a[hi]-a[lo])*(i-lo);
+}
+
+function makeRatioChart(rangeDays){
+  const el=document.getElementById("c_ratio");
+  if(!charts["c_ratio"]) charts["c_ratio"]=echarts.init(el);
+  const ch=charts["c_ratio"];
+  const arr=ratioData("it_bologna_durum","it_bologna_soft");
+  if(!arr.length){
+    ch.setOption({title:{text:"暂无数据",left:"center",top:"40%",
+      textStyle:{color:"#9aa1ab",fontSize:13}}}, true);
+    return ch;
+  }
+  // 阈值一律用全样本分位，切换时间范围不改变参考线位置
+  const all=arr.map(x=>x[1]);
+  const p10=quantile(all,0.10), p50=quantile(all,0.50), p90=quantile(all,0.90);
+  const cur=arr[arr.length-1][1], curDate=arr[arr.length-1][0];
+  const pctRank=Math.round(100*all.filter(v=>v<=cur).length/all.length);
+
+  const last=arr[arr.length-1][0];
+  let minD="";
+  if(rangeDays>0){
+    const t=new Date(last); t.setDate(t.getDate()-rangeDays);
+    minD=t.toISOString().slice(0,10);
+  }
+  const shown=arr.filter(pt=>!minD||pt[0]>=minD);
+  // 标签位置按各线附近的空白区分别放，避免被折线压住
+  const lines=[
+    {yAxis:p90, color:"#b5462f", pos:"insideEndTop",  label:`P90 ${p90.toFixed(2)}　替代压力区`},
+    {yAxis:p50, color:"#9aa1ab", pos:"insideStartTop",label:`P50 ${p50.toFixed(2)}　十三年中枢`},
+    {yAxis:p10, color:"#0f9d58", pos:"insideMiddleBottom",label:`P10 ${p10.toFixed(2)}　相对便宜区`}
+  ];
+  const series=[{
+    name:"杜兰 ÷ 软麦", type:"line", showSymbol:true, symbolSize:4.5, connectNulls:true,
+    lineStyle:{width:2,color:"#1f4e79"}, itemStyle:{color:"#1f4e79"},
+    emphasis:{focus:"series"}, data:shown,
+    markPoint:(function(){
+      // 一个 markPoint 里同时放"异常周"和"当前值"两类点，写两个同名字段会互相覆盖
+      const pts=outliersOf(shown,0.08).map(pt=>({coord:pt,
+        symbol:"circle",symbolSize:9,
+        itemStyle:{color:"#fff",borderColor:"#b5462f",borderWidth:2},
+        label:{show:true,formatter:"该周报价异常",position:"right",distance:7,
+          fontSize:9,color:"#b5462f",backgroundColor:"rgba(255,255,255,.9)",padding:[1,3]}}));
+      pts.push({coord:[curDate,cur], symbol:"circle",symbolSize:9,
+        itemStyle:{color:"#1f4e79",borderColor:"#fff",borderWidth:2},
+        label:{show:true,formatter:cur.toFixed(2),position:"left",offset:[-6,0],
+          fontSize:11,color:"#1f4e79",fontWeight:600}});
+      return {silent:true, data:pts};
+    })(),
+    markLine:{symbol:"none",silent:true,
+      data:lines.map(l=>({yAxis:l.yAxis,
+        lineStyle:{color:l.color,type:"dashed",width:1.2,opacity:.75},
+        label:{formatter:l.label,position:l.pos,fontSize:10,color:l.color,
+          backgroundColor:"rgba(255,255,255,.96)",padding:[2,4],borderRadius:2,
+          borderColor:"rgba(0,0,0,.04)",borderWidth:1}}))}
+  }];
+
+  const vals=shown.map(p=>p[1]).concat([p10,p90]);
+  let ymin=Math.min.apply(null,vals), ymax=Math.max.apply(null,vals);
+  // 下方多留一点：P10 标签要压在参考线下方，空间不够会被轴线和折线夹住
+  const sp=(ymax-ymin)||0.1;
+  ymin=Math.floor((ymin-Math.max(0.05,sp*0.2))*100)/100;
+  ymax=Math.ceil((ymax+Math.max(0.03,sp*0.1))*100)/100;
+
+  ch.setOption({
+    grid:{left:56,right:96,top:44,bottom:52},
+    legend:{top:0,left:0,itemWidth:14,itemHeight:8,textStyle:{fontSize:11,color:"#6b7280"}},
+    graphic:[{
+      type:"text", right:16, top:6,
+      style:{text:`当前 ${cur.toFixed(2)}（历史 ${pctRank}% 分位）`,
+        fill:"#1f4e79", font:"600 12.5px -apple-system,Segoe UI,Microsoft YaHei,sans-serif"}
+    }],
+    tooltip:{
+      trigger:"axis", axisPointer:{type:"line",lineStyle:{color:"#c9ced6"}},
+      backgroundColor:"rgba(255,255,255,.97)", borderColor:"#e6e8ec", borderWidth:1,
+      textStyle:{color:"#1a1d23",fontSize:12}, padding:[8,12],
+      formatter:function(ps){
+        if(!ps.length||ps[0].value[1]==null) return "";
+        const v=ps[0].value[1];
+        const soft=D.series.it_bologna_soft, dur=D.series.it_bologna_durum;
+        const i1=soft?soft.dates.indexOf(ps[0].axisValue):-1;
+        const i2=dur?dur.dates.indexOf(ps[0].axisValue):-1;
+        let h=`<b>${ps[0].axisValue}</b><br>`;
+        if(i1>=0) h+=`软麦　${fmt(soft.native[i1],2)} EUR/吨<br>`;
+        if(i2>=0) h+=`杜兰　${fmt(dur.native[i2],2)} EUR/吨<br>`;
+        h+=`比价　<b>${v.toFixed(3)}</b>　<span style="color:#6b7280">杜兰比软麦贵 ${((v-1)*100).toFixed(1)}%</span>`;
+        return h;
+      }
+    },
+    xAxis:{type:"time", min:minD||undefined, axisLine:{lineStyle:{color:"#dfe3e8"}},
+      axisLabel:{color:"#9aa1ab",fontSize:11}, splitLine:{show:false}},
+    yAxis:{type:"value",
+      min:ymin, max:ymax, scale:true, axisLabel:{color:"#9aa1ab",fontSize:11,formatter:v=>v.toFixed(2)},
+      splitLine:{lineStyle:{color:"#f0f2f5"}}, axisLine:{show:false}, axisTick:{show:false}},
+    dataZoom:[{type:"inside"},{type:"slider",height:16,bottom:12,
+      borderColor:"transparent",fillerColor:"rgba(31,78,121,.08)",
+      handleStyle:{color:"#1f4e79"},textStyle:{color:"#9aa1ab",fontSize:10}}],
+    series:series
+  }, true);
+  return ch;
+}
+
+function render(rangeSoft, rangeDurum){
+  makeChart("c_soft", D.soft, rangeSoft);
+  makeChart("c_durum", D.durum, rangeDurum);
+  makeBasisChart(rangeSoft);
+  makeRatioChart(365);
+}
+
+/* ---------- 按钮 ---------- */
+const ranges={soft:365, durum:365, basis:365, ratio:365};
+document.querySelectorAll(".btns[data-chart]").forEach(box=>{
+  box.addEventListener("click", e=>{
+    if(e.target.tagName!=="BUTTON") return;
+    box.querySelectorAll("button").forEach(b=>b.classList.remove("on"));
+    e.target.classList.add("on");
+    const which=box.dataset.chart;
+    ranges[which]=parseInt(e.target.dataset.r);
+    if(which==="soft") makeChart("c_soft",D.soft,ranges.soft);
+    else if(which==="durum") makeChart("c_durum",D.durum,ranges.durum);
+    else if(which==="basis") makeBasisChart(ranges.basis);
+    else makeRatioChart(ranges.ratio);
+  });
+});
+
+/* ---------- 截图墙 ---------- */
+function shots(){
+  const box=document.getElementById("shots");
+  if(!SHOTS.length){ box.innerHTML="<div class='note'>还没有截图，运行 collect.py --daily 后自动生成。</div>"; return; }
+  box.innerHTML=SHOTS.map(day=>{
+    const imgs=day.items.map(it=>{
+      const label=(D.shotLabels&&D.shotLabels[it.key])||(D.meta[it.key]&&D.meta[it.key].name)||it.key;
+      if(it.ext==="pdf"){
+        return `<a class="shot file" href="${it.rel}" target="_blank">
+            <div class="ph">PDF</div><div class="cap">${label}</div></a>`;
+      }
+      return `<div class="shot" onclick="lb('${it.rel}')">
+        <img src="${it.rel}" loading="lazy" alt="${it.key}">
+        <div class="cap">${label}</div>
+      </div>`;
+    }).join("");
+    return `<div class="dayttl">${day.date} · ${day.items.length} 份存档</div><div class="shotgrid">${imgs}</div>`;
+  }).join("");
+}
+function lb(src){
+  const l=document.getElementById("lb");
+  document.getElementById("lbimg").src=src;
+  l.style.display="flex";
+}
+document.getElementById("lb").addEventListener("click",()=>document.getElementById("lb").style.display="none");
+document.addEventListener("keydown",e=>{if(e.key==="Escape")document.getElementById("lb").style.display="none";});
+
+window.addEventListener("resize",()=>Object.values(charts).forEach(c=>c.resize()));
+
+/* ---------- 打印自适应 ----------
+   纸张宽度（A4 横向可用约 1062px）远小于屏幕，ECharts 画布如果还停在屏幕宽度，
+   右半边就会被页面边缘直接切断。注意 beforeprint 触发时用的仍是屏幕布局，
+   真正切到纸张布局是在 matchMedia("print") 变为 true 之后，
+   所以必须在这个回调里重绘，画布才会按纸张宽度重新排版。 */
+function fitCharts(){
+  Object.keys(charts).forEach(id=>{
+    const c=charts[id];
+    if(c && !c.isDisposed()) c.resize();
+  });
+}
+const mqPrint=window.matchMedia("print");
+function onPrintMode(){
+  fitCharts();
+  setTimeout(fitCharts,0);
+  setTimeout(fitCharts,150);
+}
+if(mqPrint.addEventListener) mqPrint.addEventListener("change",onPrintMode);
+else if(mqPrint.addListener) mqPrint.addListener(onPrintMode);
+window.addEventListener("beforeprint",fitCharts);
+window.addEventListener("afterprint",()=>setTimeout(fitCharts,30));
+
+kpi(); render(365,365); shots();
+</script>
+</body>
+</html>

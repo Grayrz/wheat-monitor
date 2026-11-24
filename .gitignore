@@ -1,0 +1,16 @@
+# 编译产物（CI 自己编译，不进仓库）
+wheat
+wheat.exe
+wheat_test
+gobuild/
+
+# 官方原始文件缓存（CI 用 actions/cache，不占仓库体积）
+data/cache/
+
+# Pages 临时目录
+public/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+*.log

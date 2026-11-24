@@ -1,0 +1,114 @@
+name: 小麦价格周更
+
+# 每周一自动跑：抓价 → 网页截图存档 → 刷新看板 → 发布 Pages → 09:00 发邮件
+# cron 一律用 UTC。这里 00:30 UTC = 08:30 北京，留 30 分钟给采集，
+# 采集完再等到 09:00 整发信，收件时间才是稳的。
+on:
+  schedule:
+    - cron: "30 0 * * 1"
+  workflow_dispatch: # 想立刻跑一次，在 Actions 页面点 Run workflow
+
+permissions:
+  contents: write # 把数据/看板/截图提交回仓库
+  pages: write # 发布 Pages
+  id-token: write
+
+concurrency:
+  group: wheat
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+          cache-dependency-path: src/go.mod
+
+      # 故意不缓存 data/cache：程序对缓存有 7 天新鲜度判断，
+      # 每周跑一次正好卡在边界上，可能直接复用上周的旧文件而不下载。
+      # 每周多花 1-3 分钟重新下载，换数据一定是新的。
+
+      - name: 编译
+        run: |
+          cd src
+          go build -trimpath -ldflags="-s -w" -o ../wheat .
+
+      # 等价于 Windows 上的 update.bat，只是不加 --open（服务器上没有浏览器可开）
+      - name: 采集 + 存档 + 生成看板
+        run: ./wheat daily
+
+      # 截图每周 2-3MB，不清理一年就 100MB+；只留最近 8 周
+      - name: 清理过期存档
+        run: |
+          ls -1d snapshots/*/ 2>/dev/null | sort | head -n -8 | xargs -r rm -rf
+
+      - name: 提交回仓库
+        run: |
+          git config user.name  "wheat-bot"
+          git config user.email "wheat-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "数据更新 $(date -u +%F)" || echo "本次无变化，跳过提交"
+          git push
+
+      # Pages 只发布站点需要的文件，源码和缓存不对外
+      - name: 组装站点目录
+        run: |
+          mkdir -p public
+          cp dashboard.html public/
+          cp -r assets public/
+          [ -d snapshots ] && cp -r snapshots public/ || true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  notify:
+    # 采集失败也要发：宁可发一封"本周没抓到"的信，也比静悄悄没消息好
+    needs: [update, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }} # 拿到 update 刚推上去的最新数据
+
+      - name: 等到 09:00（北京时间）再发
+        run: |
+          target=$(TZ=Asia/Shanghai date -d "today 09:00" +%s)
+          now=$(date +%s)
+          wait=$((target - now))
+          if [ "$wait" -gt 0 ] && [ "$wait" -le 1500 ]; then
+            echo "采集已完成，距 09:00 还有 ${wait} 秒，等一会儿再发"
+            sleep "$wait"
+          else
+            echo "已过 09:00 或等待过久（${wait}s），立即发送"
+          fi
+
+      - name: 发送周报邮件
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          RUN_STATUS: ${{ needs.update.result }}
+          SITE_URL: ${{ needs.deploy.outputs.page_url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+        run: python3 tools/mail.py
