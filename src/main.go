@@ -9,10 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
-func today() string { return time.Now().Format("2006-01-02") }
+func today() string { return nowCST().Format("2006-01-02") }
 
 // ---------------- 每日采集 ----------------
 func cmdDaily(cfg *Config, day string, noShot, refresh, doOpen bool) {
@@ -36,7 +35,7 @@ func cmdDaily(cfg *Config, day string, noShot, refresh, doOpen bool) {
 			rec = Row{Date: day, Key: src.Key, Name: src.Name, Market: src.Market,
 				Grade: src.Grade, Price: "", Currency: src.Currency, Unit: src.Unit,
 				Status: "fail", Note: trunc(e.Error(), 150),
-				CapturedAt: time.Now().Format("2006-01-02T15:04:05")}
+				CapturedAt: nowCST().Format("2006-01-02T15:04:05")}
 			rows = upsert(rows, rec)
 		}
 
@@ -130,7 +129,7 @@ func newRec(src Source, day, price string, fx map[string]float64, status, note s
 		Grade: src.Grade, Price: price, Currency: src.Currency, Unit: src.Unit,
 		PriceUSD: toUSD(price, src.Currency, src.Unit, fx),
 		Status:   status, Note: note,
-		CapturedAt: time.Now().Format("2006-01-02T15:04:05")}
+		CapturedAt: nowCST().Format("2006-01-02T15:04:05")}
 }
 
 func takeShots(cfg *Config, day string) map[string]string {
